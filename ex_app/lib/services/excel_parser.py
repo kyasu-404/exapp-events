@@ -145,6 +145,8 @@ def parse_xlsx(content: bytes, file_id: str, path: str, settings: Settings) -> P
             protect=True,
         )
         return result
+    formula_workbook = None
+    formula_rows = {}
     try:
         for sheet in workbook:
             match = DATE_PATTERN.fullmatch(sheet.title.strip())
@@ -208,6 +210,33 @@ def parse_xlsx(content: bytes, file_id: str, path: str, settings: Settings) -> P
                 values = {key: cells[index] if index < len(cells) else None for key, index in mapping.items()}
                 if not any(values.get(k) is not None for k in REQUIRED):
                     continue
+                if not any(
+                    value is not None and str(value).strip()
+                    for key, value in values.items()
+                    if key != "location"
+                ):
+                    # An unused room row is valid. Uncached formulas still protect existing events.
+                    if sheet.title not in formula_rows:
+                        if formula_workbook is None:
+                            formula_workbook = load_workbook(
+                                BytesIO(content), data_only=False, read_only=True, keep_links=False
+                            )
+                        columns = [mapping[key] for key in REQUIRED]
+                        first_column, last_column = min(columns), max(columns)
+                        formula_rows[sheet.title] = {
+                            number
+                            for number, raw in enumerate(
+                                formula_workbook[sheet.title].iter_rows(
+                                    min_row=row_no,
+                                    min_col=first_column + 1,
+                                    max_col=last_column + 1,
+                                ),
+                                row_no,
+                            )
+                            if any(raw[column - first_column].data_type == "f" for column in columns)
+                        }
+                    if row_no not in formula_rows[sheet.title]:
+                        continue
                 if not all(values.get(k) is not None and str(values[k]).strip() for k in REQUIRED):
                     result.issue(
                         "Warning",
@@ -273,4 +302,6 @@ def parse_xlsx(content: bytes, file_id: str, path: str, settings: Settings) -> P
             result.issue("Warning", "Нет листов с датами; удаление прежних событий запрещено", protect=True)
     finally:
         workbook.close()
+        if formula_workbook is not None:
+            formula_workbook.close()
     return result

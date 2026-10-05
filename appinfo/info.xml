@@ -4,7 +4,7 @@
   <name>Мероприятия</name>
   <summary>Мероприятия из Excel в Nextcloud Calendar</summary>
   <description>Синхронизация XLSX, публичный календарь и email-напоминания. Управление только администраторами.</description>
-  <version>0.1.0</version>
+  <version>0.1.1</version>
   <licence>agpl</licence>
   <author>exapp-events contributors</author>
   <namespace>ExAppEvents</namespace>
@@ -14,7 +14,7 @@
     <docker-install>
       <registry>docker.io</registry>
       <image>exapp-events</image>
-      <image-tag>0.1.0</image-tag>
+      <image-tag>0.1.1</image-tag>
     </docker-install>
     <routes>
       <route><url>^/api/.*$</url><verb>GET,POST,PUT,DELETE</verb><access_level>ADMIN</access_level></route>

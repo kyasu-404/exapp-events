@@ -167,7 +167,7 @@ def create_app(directory: Path | None = None, factory=AsyncNextcloudApp, restore
         counts["logs"] = runtime.store.rows("SELECT level,COUNT(*) n FROM logs GROUP BY level")
         return {
             "enabled": runtime.enabled,
-            "version": "0.1.0",
+            "version": "0.1.1",
             "counts": counts,
             "source_path": runtime.store.meta("source_path", runtime.settings().source_path),
             "last_files_event": runtime.store.meta("last_files_event"),

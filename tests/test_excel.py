@@ -147,6 +147,33 @@ def test_missing_optional_headers_warn_without_blocking_event():
     assert len(result.issues) == 3 and all(i["level"] == "Warning" for i in result.issues)
 
 
+def test_unused_room_rows_do_not_block_sync_or_deletions():
+    rows = [["Актовый зал", None, None, None, None, None, None], ROW, ["10 кабинет"]]
+    result = parse_xlsx(workbook(rows), "42", "/2026/file.xlsx", Settings())
+    assert result.safe_delete and len(result.events) == 1 and not result.issues
+
+
+def test_sheet_with_only_unused_rooms_is_valid_and_empty():
+    result = parse_xlsx(workbook([["Актовый зал"], ["9 кабинет"]]), "42", "/2026/file.xlsx", Settings())
+    assert result.safe_delete and not result.events and not result.issues
+
+
+@pytest.mark.parametrize(
+    "column,value", [(1, "15:00"), (2, "Совещание"), (3, "Иванов"), (4, "a@example.org")]
+)
+def test_partial_event_is_not_treated_as_unused_room(column, value):
+    row = ["Актовый зал"] + [None] * 6
+    row[column] = value
+    result = parse_xlsx(workbook([row]), "42", "/2026/file.xlsx", Settings())
+    assert not result.safe_delete and not result.events and len(result.issues) == 1
+
+
+def test_uncached_event_formulas_are_not_treated_as_unused_room():
+    row = ["Актовый зал", "=TIME(15,0,0)", '=CONCAT("A","B")', '="Иванов"', None, None, None]
+    result = parse_xlsx(workbook([row]), "42", "/2026/file.xlsx", Settings())
+    assert not result.safe_delete and not result.events and len(result.issues) == 1
+
+
 def test_headers_after_fifty_empty_rows_are_rejected():
     from io import BytesIO
 
