@@ -57,7 +57,7 @@ Dockerfile собирает frontend, устанавливает backend, про
 python scripts/prepare_release.py --registry ghcr.io --image YOUR_NAMESPACE/exapp-events --tag 0.1.1 --output dist/info.xml
 ```
 
-Используйте namespace в нижнем регистре вместо `YOUR_NAMESPACE`. Скрипт только создаёт локальный XML; ничего не публикует и не устанавливает. На действующем сервере используется локальный образ `events.local/kyasu-404/exapp-events:0.1.1` и отдельное сопоставление `events.local → local` в существующем daemon: публичная публикация образа не требуется. Остальные registry mappings не заменялись.
+Используйте namespace в нижнем регистре вместо `YOUR_NAMESPACE`. Скрипт только создаёт локальный XML; ничего не публикует и не устанавливает. Для закрытого registry сначала настройте доступ daemon к нему. На действующем сервере используется локальный образ `events.local/kyasu-404/exapp-events:0.1.1` и отдельное сопоставление `events.local → local` в существующем daemon: публичная публикация образа не требуется. Остальные registry mappings не заменялись.
 
 ## Последующая установка через существующий HaRP
 

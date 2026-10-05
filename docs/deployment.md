@@ -9,11 +9,11 @@
 | Объект | Значение |
 | --- | --- |
 | Репозиторий | `/opt/nextcloud/exapps/exapp-events/`, origin `kyasu-404/exapp-events` |
-| ExApp | `exapp_events`, версия 0.1.0, enabled |
+| ExApp | `exapp_events`, версия 0.1.1, enabled |
 | Контейнер | `nc_app_exapp_events`, healthy |
-| Image | `events.local/kyasu-404/exapp-events:0.1.0` |
+| Image | `events.local/kyasu-404/exapp-events:0.1.1` |
 | Image ID первой установки | `sha256:03eb4af996212b6b66188677b2c34e6128c44d358a14fd03a54e5e38a32de5ec` |
-| Основной код image | commit `564ceb5` |
+| Основной код image | commit `896944f` |
 | HaRP | существующий контейнер `nc_harp`, без перезапуска |
 | Docker network | `nextcloud-net` |
 | Restart policy | `unless-stopped` |
@@ -26,6 +26,8 @@
 В daemon добавлено только отдельное сопоставление registry `events.local → local`. Оно касается данного образа и не заменяет настройки других registry. DNS/registry-сервис `events.local` не нужен: AppAPI использует уже загруженный локальный Docker image. Cloud compose и сертификаты HaRP хоста не редактировались.
 
 Образ собирался отдельным builder `exapp-events-build`, ограниченным 2 CPU/2 ГБ RAM. Builder можно останавливать после сборки; его cache сохраняется. Приложение работает от UID 10001, запускается через supervisor, который наблюдает за FastAPI и FRP.
+
+5 октября приложение обновлено через AppAPI до 0.1.1. Строки с одной аудиторией и пустыми остальными полями теперь пропускаются без предупреждений; неполные мероприятия и формулы без cached values сохраняют защиту от удаления. Перед обновлением выполнен SQLite online backup в private подкаталог `backups` того же persistent volume. После обновления контейнер healthy, версия API 0.1.1, admin API и assets отвечают HTTP 200; настройки источника, календаря и SMTP сохранены. ID/StartedAt всех 21 остальных работающих контейнеров совпали до/после. Backend: 100 тестов прошли, Ruff и Docker build прошли; builder снова остановлен.
 
 ## Почему состояние сохраняется
 
