@@ -7,6 +7,8 @@ require_once '/var/www/html/lib/base.php';
 use OCA\AppAPI\PublicFunctions;
 use OCA\AppAPI\Service\DaemonConfigService;
 use OCP\IGroupManager;
+use OCP\IUserManager;
+use OCA\AppAPI\Service\UI\TopMenuService;
 use OCP\Server;
 
 try {
@@ -28,6 +30,20 @@ try {
     }
     $api = Server::get(PublicFunctions::class);
     $user = $admins[0]->getUID();
+    if ($mode === 'security') {
+        $entries = array_filter(Server::get(TopMenuService::class)->getExAppMenuEntries(), fn($entry) => $entry->getAppid() === 'exapp_events');
+        foreach ($entries as $entry) {
+            echo json_encode(['menu' => $entry->getName(), 'admin_required' => $entry->getAdminRequired()]) . "\n";
+        }
+        foreach (Server::get(IUserManager::class)->search('', 50) as $candidate) {
+            if ($candidate->isEnabled() && !Server::get(IGroupManager::class)->isAdmin($candidate->getUID())) {
+                $response = $api->exAppRequest('exapp_events', '/api/status', $candidate->getUID(), 'GET');
+                echo json_encode(['normal_user_http' => $response->getStatusCode()]) . "\n";
+                break;
+            }
+        }
+        exit(0);
+    }
     $route = $mode === 'settings' ? '/api/settings' : '/api/status';
     $method = 'GET';
     $params = [];
@@ -52,7 +68,7 @@ try {
     } elseif (!in_array($mode, ['status', 'settings'], true)) {
         throw new RuntimeException('Unknown mode');
     }
-    $response = $api->exAppRequest('exapp_events', $route, $user, $method, $params);
+    $response = $api->exAppRequest('exapp_events', $route, $user, $method, $params, ['timeout' => 60]);
     echo json_encode(['http' => $response->getStatusCode(), 'data' => json_decode((string)$response->getBody(), true)], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) . "\n";
 } catch (Throwable $e) {
     fwrite(STDERR, "ExApp operation failed; inspect its status/logs.\n");
