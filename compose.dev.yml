@@ -1,0 +1,13 @@
+# For a LOCAL test Nextcloud only. Production uses the existing AppAPI/HaRP daemon.
+services:
+  events:
+    build: .
+    image: exapp-events:0.1.0
+    env_file: .env
+    ports:
+      - "127.0.0.1:23000:23000"
+    volumes:
+      - events-data:/data
+    stop_grace_period: 60s
+volumes:
+  events-data:
