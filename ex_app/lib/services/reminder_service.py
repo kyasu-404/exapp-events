@@ -11,8 +11,9 @@ BACKOFF = [60, 300, 900, 3600]
 
 
 class ReminderService:
-    def __init__(self, store):
+    def __init__(self, store, delivery=None):
         self.store = store
+        self.delivery = delivery
         self.lock = asyncio.Lock()
 
     def jobs(self, event: Event, settings, at=None):
@@ -157,9 +158,19 @@ class ReminderService:
                 if not changed:
                     continue
                 try:
-                    await asyncio.to_thread(
-                        smtp_service.send, payload, job["recipient"], settings, password, job["dedupe_key"]
-                    )
+                    if self.delivery:
+                        await self.delivery.send(
+                            payload, job["recipient"], settings, password, job["dedupe_key"]
+                        )
+                    else:
+                        await asyncio.to_thread(
+                            smtp_service.send,
+                            payload,
+                            job["recipient"],
+                            settings,
+                            password,
+                            job["dedupe_key"],
+                        )
                     self.store.execute(
                         "UPDATE reminders SET status='sent',sent_at=?,updated_at=?,last_error=NULL WHERE id=?",
                         (now(), now(), job["id"]),

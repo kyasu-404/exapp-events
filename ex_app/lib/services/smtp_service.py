@@ -10,9 +10,7 @@ from email_validator import validate_email
 from ..models import Settings
 
 
-def message(payload: dict, recipient: str, settings: Settings, dedupe_key: str) -> EmailMessage:
-    recipient = validate_email(recipient, check_deliverability=False).normalized
-    sender = validate_email(settings.smtp_sender, check_deliverability=False).normalized
+def content(payload: dict) -> tuple[str, str, str]:
     kind = payload.get("kind", "reminder")
     label = {
         "reminder": "Напоминание",
@@ -27,15 +25,24 @@ def message(payload: dict, recipient: str, settings: Settings, dedupe_key: str) 
         body = f"{label}:\n\n{event['title']}\n\nДата: {start:%d.%m.%Y}\nВремя: {start:%H:%M}\nМесто: {event['location']}\nОтветственный: {event['responsible']}\n\nЭто автоматическое уведомление."
     else:
         subject, body = "Мероприятия: тест SMTP", "SMTP настроен. Это автоматическое тестовое письмо."
+    return (
+        subject.replace("\r", " ").replace("\n", " "),
+        body,
+        "<html><body><p>" + html.escape(body).replace("\n", "<br>") + "</p></body></html>",
+    )
+
+
+def message(payload: dict, recipient: str, settings: Settings, dedupe_key: str) -> EmailMessage:
+    recipient = validate_email(recipient, check_deliverability=False).normalized
+    sender = validate_email(settings.smtp_sender, check_deliverability=False).normalized
+    subject, body, html_body = content(payload)
     mail = EmailMessage()
-    mail["Subject"] = subject.replace("\r", " ").replace("\n", " ")
+    mail["Subject"] = subject
     mail["From"] = formataddr((settings.smtp_name, sender))
     mail["To"] = recipient
     mail["Message-ID"] = f"<{dedupe_key}@{sender.split('@')[1]}>"
     mail.set_content(body)
-    mail.add_alternative(
-        "<html><body><p>" + html.escape(body).replace("\n", "<br>") + "</p></body></html>", subtype="html"
-    )
+    mail.add_alternative(html_body, subtype="html")
     return mail
 
 

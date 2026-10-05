@@ -42,6 +42,7 @@ class Settings(BaseModel):
     public_calendar: str = ""
     public_link: str = ""
     smtp_enabled: bool = False
+    smtp_mode: Literal["custom", "nextcloud"] = "custom"
     smtp_host: str = ""
     smtp_port: int = Field(587, ge=1, le=65535)
     smtp_security: Literal["starttls", "tls", "none"] = "starttls"

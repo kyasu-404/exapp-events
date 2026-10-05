@@ -20,6 +20,7 @@ from .services import smtp_service
 from .services.calendar_service import CalendarService
 from .services.event_listener import CALLBACK, enqueue
 from .services.excel_parser import parse_xlsx
+from .services.mail_delivery import MailDelivery
 from .services.nextcloud_files import NextcloudFiles
 
 Admin = Annotated[AsyncNextcloudApp, Depends(require_admin)]
@@ -109,7 +110,7 @@ def create_app(directory: Path | None = None, factory=AsyncNextcloudApp, restore
                     409,
                     "Владельцев, источник и выбранные календари нельзя заменять после первой синхронизации. Для переноса требуется отдельная миграция состояния.",
                 )
-        if settings.smtp_enabled:
+        if settings.smtp_enabled and settings.smtp_mode == "custom":
             try:
                 smtp_service.message({"kind": "test"}, settings.smtp_sender, settings, "validation")
             except Exception:
@@ -261,11 +262,11 @@ def create_app(directory: Path | None = None, factory=AsyncNextcloudApp, restore
     @api.post("/smtp/test")
     async def smtp_test(body: Recipient, nc: Admin):
         settings = app.state.runtime.settings()
-        password = await nc.appconfig_ex.get_value("smtp_password", "")
+        password = (
+            "" if settings.smtp_mode == "nextcloud" else await nc.appconfig_ex.get_value("smtp_password", "")
+        )
         try:
-            await asyncio.to_thread(
-                smtp_service.send, {"kind": "test"}, body.recipient, settings, password, "test"
-            )
+            await MailDelivery(factory).send({"kind": "test"}, body.recipient, settings, password, "test")
         except Exception:
             raise HTTPException(
                 502, "Тест SMTP не выполнен: проверьте сервер, шифрование, авторизацию и адреса"
@@ -335,11 +336,15 @@ def create_app(directory: Path | None = None, factory=AsyncNextcloudApp, restore
             )
 
         await check("Calendar API", calendar_check)
-        if settings.smtp_host:
+        if settings.smtp_mode == "nextcloud" or settings.smtp_host:
 
             async def smtp_check():
-                password = await nc.appconfig_ex.get_value("smtp_password", "")
-                await asyncio.to_thread(smtp_service.probe, settings, password)
+                password = (
+                    ""
+                    if settings.smtp_mode == "nextcloud"
+                    else await nc.appconfig_ex.get_value("smtp_password", "")
+                )
+                await MailDelivery(factory).probe(settings, password)
 
             await check("SMTP", smtp_check)
         else:

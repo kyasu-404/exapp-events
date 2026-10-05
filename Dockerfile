@@ -41,7 +41,7 @@ COPY ex_app/img ./ex_app/img
 COPY --from=frontend /build/ex_app/js/events-main.js ./ex_app/js/events-main.js
 COPY --from=frontend /build/ex_app/css/events-main.css ./ex_app/css/events-main.css
 COPY appinfo ./appinfo
-COPY --chmod=755 scripts/entrypoint.sh scripts/start.sh scripts/healthcheck.py scripts/configure_frp.py /scripts/
+COPY --chmod=755 scripts/entrypoint.sh scripts/start.sh scripts/healthcheck.py scripts/configure_frp.py scripts/supervise.py /scripts/
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 APP_HOST=0.0.0.0 APP_PORT=23000 APP_PERSISTENT_STORAGE=/data
 VOLUME /data
 ENTRYPOINT ["/scripts/entrypoint.sh"]

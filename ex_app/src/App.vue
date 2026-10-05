@@ -186,12 +186,16 @@ onUnmounted(() => clearInterval(timer))
         <template v-if="settings && page === 'Уведомления'">
           <NcSettingsSection name="SMTP" description="Письма отправляются на адреса из Excel, включая получателей без аккаунта Nextcloud.">
             <NcCheckboxRadioSwitch v-model="settings.smtp_enabled">Email-уведомления</NcCheckboxRadioSwitch>
+            <label class="select-label">Способ отправки<select v-model="settings.smtp_mode"><option value="nextcloud">SMTP Nextcloud</option><option value="custom">Отдельный SMTP</option></select></label>
+            <p v-if="settings.smtp_mode==='nextcloud'">Отправка через SMTP, настроенный в Nextcloud. Отправитель и пароль берутся из настроек облака; изменения применяются без перенастройки приложения.</p>
+            <template v-if="settings.smtp_mode==='custom'">
             <Field v-model="settings.smtp_host" label="SMTP-сервер" /><Field v-model="settings.smtp_port" label="Порт" numeric />
             <label class="select-label">Шифрование<select v-model="settings.smtp_security"><option value="starttls">STARTTLS</option><option value="tls">SSL/TLS</option><option value="none">Без шифрования</option></select></label>
             <p v-if="settings.smtp_security==='none'" class="error">Соединение и пароль передаются без шифрования. Используйте только доверенную сеть.</p>
             <Field v-model="settings.smtp_user" label="Логин" /><Field v-model="password" :label="settings.smtp_password_set ? 'Новый пароль (текущий сохранён)' : 'Пароль'" type="password" />
             <NcCheckboxRadioSwitch v-model="clearPassword">Удалить сохранённый пароль</NcCheckboxRadioSwitch>
             <Field v-model="settings.smtp_sender" label="Email отправителя" /><Field v-model="settings.smtp_name" label="Имя отправителя" />
+            </template>
             <Field v-model="settings.overdue_minutes" label="Допустимая просрочка после простоя, минут (0 — пропустить)" numeric />
             <NcCheckboxRadioSwitch v-model="settings.notify_changes">Уведомлять об изменении после отправленного напоминания</NcCheckboxRadioSwitch>
             <NcCheckboxRadioSwitch v-model="settings.notify_cancellation">Уведомлять об отмене после отправленного напоминания</NcCheckboxRadioSwitch>

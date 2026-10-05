@@ -9,7 +9,7 @@
   <author>exapp-events contributors</author>
   <namespace>ExAppEvents</namespace>
   <category>organization</category>
-  <dependencies><nextcloud min-version="34" max-version="34"/></dependencies>
+  <dependencies><nextcloud min-version="34" max-version="35"/></dependencies>
   <external-app>
     <docker-install>
       <registry>docker.io</registry>

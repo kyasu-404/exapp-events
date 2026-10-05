@@ -3,7 +3,7 @@ export interface Settings {
   debounce_seconds: number; reconciliation_minutes: number; reconcile_on_start: boolean; check_month: boolean;
   headers: Record<string, string>; duration_minutes: number; timezone: string; missing_file_policy: string;
   calendar_owner: string; internal_calendar: string; public_enabled: boolean; public_calendar: string; public_link: string;
-  smtp_enabled: boolean; smtp_host: string; smtp_port: number; smtp_security: string; smtp_user: string; smtp_sender: string; smtp_name: string;
+  smtp_enabled: boolean; smtp_mode: 'custom' | 'nextcloud'; smtp_host: string; smtp_port: number; smtp_security: string; smtp_user: string; smtp_sender: string; smtp_name: string;
   overdue_minutes: number; notify_changes: boolean; notify_cancellation: boolean; retention_days: number;
   delete_guard: boolean; delete_percent: number; delete_minimum: number; smtp_password_set?: boolean;
 }

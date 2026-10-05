@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<info>
+  <id>exapp_events_bridge</id>
+  <name>Мероприятия: SMTP Nextcloud</name>
+  <summary>Authenticated SMTP transport for exapp_events</summary>
+  <description>Отправка уведомлений Мероприятий через штатный SMTP Nextcloud. Только подписанные запросы exapp_events.</description>
+  <version>0.1.0</version>
+  <licence>agpl</licence>
+  <author>exapp-events contributors</author>
+  <namespace>ExAppEventsBridge</namespace>
+  <category>integration</category>
+  <dependencies><nextcloud min-version="34" max-version="35"/></dependencies>
+</info>

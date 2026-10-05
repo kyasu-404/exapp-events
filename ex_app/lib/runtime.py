@@ -11,6 +11,7 @@ from .db.store import Store, dumps, now
 from .models import Settings
 from .services.calendar_service import CalendarService
 from .services.event_listener import register_listener
+from .services.mail_delivery import MailDelivery
 from .services.nextcloud_files import NextcloudFiles
 from .services.reminder_service import ReminderService
 from .services.sync_engine import SyncEngine
@@ -20,7 +21,7 @@ class Runtime:
     def __init__(self, directory: Path, factory=AsyncNextcloudApp):
         self.store = Store(directory)
         self.factory = factory
-        self.reminders = ReminderService(self.store)
+        self.reminders = ReminderService(self.store, MailDelivery(factory))
         self.engine = SyncEngine(self.store, self.reminders)
         self.tasks = set()
         self.scheduler = None
@@ -107,8 +108,10 @@ class Runtime:
                 self.start_run("startup")
 
     async def restore(self):
-        # Verify server-side enabled state before restoring workers; retry network failure.
-        for delay in (0, 5, 15, 30, 60):
+        # Cloud maintenance may last longer than a container restart. Keep reconnecting
+        # until the server can confirm enabled state; shutdown cancels this task.
+        delay = 0
+        while True:
             await asyncio.sleep(delay)
             try:
                 nc = self.factory()
@@ -118,6 +121,7 @@ class Runtime:
                 return
             except Exception:
                 self.store.log("Warning", "AppAPI", "Не удалось восстановить lifecycle; повтор подключения")
+                delay = min(60, max(5, delay * 2))
 
     async def schedule(self):
         while self.enabled:
@@ -164,7 +168,11 @@ class Runtime:
 
     async def mail_tick(self, settings):
         try:
-            password = await self.factory().appconfig_ex.get_value("smtp_password", "")
+            password = (
+                ""
+                if settings.smtp_mode == "nextcloud"
+                else await self.factory().appconfig_ex.get_value("smtp_password", "")
+            )
             await self.reminders.tick(settings, password)
         except Exception:
             self.store.log("Error", "Email", "SMTP secret недоступен; отправка отложена")
