@@ -1,0 +1,6 @@
+packages:
+  - '.'
+allowBuilds:
+  esbuild: true
+  '@parcel/watcher': false
+  core-js: false

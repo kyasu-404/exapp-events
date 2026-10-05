@@ -1,0 +1,32 @@
+{
+  "name": "exapp-events",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build && node scripts/copy-style.mjs",
+    "typecheck": "vue-tsc --noEmit",
+    "lint": "eslint ex_app/src",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@mdi/js": "^7.4.47",
+    "@nextcloud/auth": "^2.0.0",
+    "@nextcloud/dialogs": "^7.0.0",
+    "@nextcloud/router": "^3.0.0",
+    "@nextcloud/vue": "^9.0.0",
+    "vue": "^3.5.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^6.0.0",
+    "eslint": "^9.0.0",
+    "eslint-plugin-vue": "^10.0.0",
+    "sass": "^1.90.0",
+    "typescript": "^5.9.0",
+    "typescript-eslint": "^8.0.0",
+    "vite": "^7.0.0",
+    "vite-plugin-node-polyfills": "^0.28.0",
+    "vitest": "^3.2.0",
+    "vue-tsc": "^3.0.0"
+  }
+}
