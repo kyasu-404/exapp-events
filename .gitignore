@@ -1,0 +1,13 @@
+.venv/
+node_modules/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+ex_app/js/
+ex_app/css/
+.env
+data/
+*.sqlite*
+test-results/
+dist/
