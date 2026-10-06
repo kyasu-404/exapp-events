@@ -75,6 +75,12 @@
 
 Обновлён только контейнер `nc_app_exapp_events` через AppAPI. Online backup: `backups/pre-0.1.3-20261006T114107Z.sqlite3` в persistent volume. Все остальные настройки сверены с backup и сохранены. API и JS/CSS отвечают 200, контейнер healthy; AppAPI, listeners, storage, SQLite, источник, Calendar и SMTP проходят диагностику. Все 21 остальные работающие контейнеры сохранили ID/StartedAt; Nextcloud остаётся вне maintenance. 127 backend-тестов, 8 frontend-тестов, Ruff, TypeScript, ESLint, UI/Docker build и [CI кода релиза](https://github.com/kyasu-404/exapp-events/actions/runs/37458028653) прошли. Письма не отправлялись. Лимиты и restart policy сохранены, отдельный builder остановлен после сборки.
 
+## Проверка сохранения ONLYOFFICE и владельца SMTP-модуля 6 октября
+
+Для мероприятия «Совещание ОРКСЭ», лист `07.10`, начало 07.10 в 16:00, на скриншоте были Email и интервал `24ч`. Проверка непосредственно скачанного из Nextcloud `0. Планы ИМЦ/2026/Октябрь/Октябрь.xlsx` в 16:27 по Москве показала пустые E2/F2 как с `data_only=True`, так и без него. Сохранённый файл имеет время изменения 14:48:45; его SHA-256 совпадает с состоянием, обработанным ExApp. Фоновая сверка выполняется, но эти значения ещё не попали в файл облака, поэтому задания SMTP нет. Настройка ONLYOFFICE `customizationForcesave=true` уже включена; кнопка «Сохранить» передаёт актуальный XLSX в Files. Сам Document Server и его редакторские сессии не изменялись. Для указанного интервала срок отправки — 06.10 в 16:00; после него `overdue_minutes=0` запрещает позднюю отправку.
+
+Предупреждение Nextcloud о `/var/www/html/custom_apps/exapp_events_bridge` устранено: каталог и файлы принадлежали UID/GID 1000, теперь назначены `www-data:www-data` (33:33), совпадающие с пользователем web-сервера. Изменён только каталог данного модуля в persistent bind mount. Штатный `AppDirsWithDifferentOwner` возвращает `success`; диагностика ExApp, в том числе SMTP/TLS/AUTH/QUIT без письма, успешна. Перезапусков не выполнялось.
+
 ## Обновление только этого приложения
 
 Для нового release сначала обновите версии в metadata/package/коде, проверьте изменения и совместимость миграций. Не используйте `app_api:app:update --all`, `docker compose down`, перезапуск общего Nextcloud/HaRP или `docker system prune` для обновления ExApp.
@@ -93,7 +99,7 @@ docker update --cpus=2 --memory=1g --memory-swap=2g --restart=unless-stopped nc_
 docker buildx stop exapp-events-build
 ```
 
-Замените `NEW_VERSION` реальной новой версией, согласованной с `appinfo/info.xml`. AppAPI управляет контейнером и прежним persistent volume; он может пересоздать лимиты из daemon defaults, поэтому `docker update` повторяется только для новой ExApp. Для обновления SMTP-модуля переносите только файлы `nextcloud_bridge/exapp_events_bridge` в соответствующий persistent каталог и обновляйте его metadata. Другие модули не заменяйте.
+Замените `NEW_VERSION` реальной новой версией, согласованной с `appinfo/info.xml`. AppAPI управляет контейнером и прежним persistent volume; он может пересоздать лимиты из daemon defaults, поэтому `docker update` повторяется только для новой ExApp. Для обновления SMTP-модуля переносите только файлы `nextcloud_bridge/exapp_events_bridge` в соответствующий persistent каталог, обновляйте его metadata и назначайте владельца `www-data:www-data` в контейнере Nextcloud. Другие модули не заменяйте.
 
 Перед обновлением делайте согласованную резервную копию SQLite/volume. Для online-копии используйте SQLite Backup API, а не одиночное копирование `.sqlite3` при активном WAL. Храните backup вне рабочего volume, с ограниченными правами; он может содержать email/мероприятия. Не удаляйте `nc_app_exapp_events_data` при очистке старых images. Откат схемы требует соответствующего backup, обратных миграций нет.
 
