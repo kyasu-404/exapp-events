@@ -46,18 +46,18 @@ pnpm build
 ## Контейнер и подготовка метаданных
 
 ```sh
-docker buildx build --platform linux/amd64 --load -t exapp-events:0.1.1 .
+docker buildx build --platform linux/amd64 --load -t exapp-events:0.1.2 .
 ```
 
 Dockerfile собирает frontend, устанавливает backend, проверяет checksum FRP 0.61.1 и поддерживает `amd64`/`arm64`. Приложение работает от UID 10001; стартовый процесс подготавливает права persistent volume и приватную копию сертификатов HaRP, затем понижает привилегии. Оригинальные сертификаты хоста не меняются. В HaRP-режиме FastAPI слушает Unix socket, FRP подключается к уже существующему прокси. Дополнительный публичный порт приложения не нужен.
 
-`appinfo/info.xml` содержит **шаблон** образа `docker.io/exapp-events:0.1.1`. Перед установкой подготовьте метаданные с принадлежащим вам registry/namespace:
+`appinfo/info.xml` содержит **шаблон** образа `docker.io/exapp-events:0.1.2`. Перед установкой подготовьте метаданные с принадлежащим вам registry/namespace:
 
 ```sh
-python scripts/prepare_release.py --registry ghcr.io --image YOUR_NAMESPACE/exapp-events --tag 0.1.1 --output dist/info.xml
+python scripts/prepare_release.py --registry ghcr.io --image YOUR_NAMESPACE/exapp-events --tag 0.1.2 --output dist/info.xml
 ```
 
-Используйте namespace в нижнем регистре вместо `YOUR_NAMESPACE`. Скрипт только создаёт локальный XML; ничего не публикует и не устанавливает. Для закрытого registry сначала настройте доступ daemon к нему. На действующем сервере используется локальный образ `events.local/kyasu-404/exapp-events:0.1.1` и отдельное сопоставление `events.local → local` в существующем daemon: публичная публикация образа не требуется. Остальные registry mappings не заменялись.
+Используйте namespace в нижнем регистре вместо `YOUR_NAMESPACE`. Скрипт только создаёт локальный XML; ничего не публикует и не устанавливает. Для закрытого registry сначала настройте доступ daemon к нему. На действующем сервере используется локальный образ `events.local/kyasu-404/exapp-events:0.1.2` и отдельное сопоставление `events.local → local` в существующем daemon: публичная публикация образа не требуется. Остальные registry mappings не заменялись.
 
 ## Последующая установка через существующий HaRP
 
