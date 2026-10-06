@@ -2,6 +2,7 @@ import asyncio
 import csv
 import json
 import os
+import time
 from contextlib import asynccontextmanager
 from io import StringIO
 from pathlib import Path
@@ -79,6 +80,7 @@ def create_app(directory: Path | None = None, factory=AsyncNextcloudApp, restore
     async def get_settings(nc: Admin):
         result = app.state.runtime.settings().model_dump()
         result["source_path"] = app.state.runtime.store.meta("source_path", result["source_path"])
+        result["archive_path"] = app.state.runtime.store.meta("archive_path", result["archive_path"])
         result["smtp_password_set"] = bool(await nc.appconfig_ex.get_value("smtp_password", ""))
         return result
 
@@ -94,6 +96,13 @@ def create_app(directory: Path | None = None, factory=AsyncNextcloudApp, restore
         if runtime.store.one("SELECT id FROM sync_runs WHERE status IN ('queued','running')"):
             raise HTTPException(409, "Дождитесь завершения сверки перед изменением настроек")
         old = runtime.settings()
+        if not settings.archive_path:
+            settings.archive_id = ""
+        elif (
+            settings.archive_path != runtime.store.meta("archive_path", old.archive_path)
+            and settings.archive_id == old.archive_id
+        ):
+            settings.archive_id = ""
         if runtime.store.one("SELECT source_key FROM source_events LIMIT 1"):
             # Prevent silent migration/abandoning already generated events in another Calendar/owner.
             if (
@@ -123,6 +132,11 @@ def create_app(directory: Path | None = None, factory=AsyncNextcloudApp, restore
             await client.set_user(settings.source_owner)
             root = await NextcloudFiles(client).resolve_root(settings)
             settings.source_id, settings.source_path = str(root.info.fileid), root.user_path
+            archive = await NextcloudFiles(client).resolve_archive(settings, root)
+            if archive:
+                settings.archive_id, settings.archive_path = str(archive.info.fileid), archive.user_path
+        elif settings.archive_path:
+            raise HTTPException(422, "Сначала выберите папку-источник")
         if settings.internal_calendar or settings.public_calendar:
             client = factory()
             await client.set_user(settings.calendar_owner)
@@ -148,9 +162,21 @@ def create_app(directory: Path | None = None, factory=AsyncNextcloudApp, restore
                 "smtp_password", body.smtp_password.get_secret_value(), sensitive=True
             )
         runtime.store.execute("INSERT OR REPLACE INTO settings VALUES(1,?)", (settings.model_dump_json(),))
+        runtime.store.set_meta("archive_path", settings.archive_path)
+        if old.delete_guard and not settings.delete_guard:
+            runtime.store.execute("UPDATE sync_runs SET status='superseded' WHERE status='requires_confirmation'")
         if not settings.smtp_enabled:
             runtime.store.execute(
                 "UPDATE reminders SET status='cancelled' WHERE status IN ('pending','retry')"
+            )
+        if (old.archive_path, old.archive_id, old.delete_guard) != (
+            settings.archive_path,
+            settings.archive_id,
+            settings.delete_guard,
+        ):
+            runtime.store.execute(
+                "INSERT OR REPLACE INTO event_queue VALUES(?,?,?)",
+                ("settings", time.time(), '{"subtype":"SettingsChanged"}'),
             )
         return {"saved": True}
 
@@ -158,7 +184,9 @@ def create_app(directory: Path | None = None, factory=AsyncNextcloudApp, restore
     async def status():
         runtime = app.state.runtime
         counts = {
-            "files": runtime.store.one("SELECT COUNT(*) n FROM source_files WHERE status!='missing'")["n"],
+            "files": runtime.store.one(
+                "SELECT COUNT(*) n FROM source_files WHERE status NOT IN ('missing','archived')"
+            )["n"],
             "events": runtime.store.one("SELECT COUNT(*) n FROM source_events WHERE active=1")["n"],
             "public": runtime.store.one(
                 "SELECT COUNT(*) n FROM calendar_events WHERE target='public' AND status='ok'"
@@ -169,7 +197,7 @@ def create_app(directory: Path | None = None, factory=AsyncNextcloudApp, restore
         counts["issues"] = len(json.loads(runtime.store.meta("sync_issues", "[]")))
         return {
             "enabled": runtime.enabled,
-            "version": "0.1.2",
+            "version": "0.1.3",
             "counts": counts,
             "source_path": runtime.store.meta("source_path", runtime.settings().source_path),
             "last_files_event": runtime.store.meta("last_files_event"),

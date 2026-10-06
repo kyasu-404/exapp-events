@@ -31,7 +31,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--registry", required=True)
     parser.add_argument("--image", required=True)
-    parser.add_argument("--tag", default="0.1.2")
+    parser.add_argument("--tag", default="0.1.3")
     parser.add_argument("--output", type=Path, default=Path("dist/info.xml"))
     args = parser.parse_args()
     print(prepare(args.registry, args.image, args.tag, args.output))

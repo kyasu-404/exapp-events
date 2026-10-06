@@ -34,7 +34,7 @@ const publicCalendar = computed({get: () => calendars.value.find(c => c.url === 
 const iframe = computed(() => { try { return embed(settings.value?.public_link ?? '', embedView.value, embedDate.value || 'now') } catch (e) { return (e as Error).message } })
 const emailCount = (states: string[]) => status.value?.counts.email.filter(r => states.includes(r.status)).reduce((sum, r) => sum + r.n, 0) ?? 0
 const date = (value?: string) => value ? new Date(value).toLocaleString('ru-RU', { timeZone: settings.value?.timezone ?? 'Europe/Moscow' }) : '—'
-const stateName = (value: string) => ({completed: 'Завершена', partial: 'Есть ошибки', failed: 'Ошибка', requires_confirmation: 'Требует подтверждения', queued: 'В очереди', running: 'Выполняется', dry_run: 'Проверка без изменений', cancelled: 'Отменена', interrupted: 'Прервана', confirmation_queued: 'Подтверждение в очереди'}[value] ?? value)
+const stateName = (value: string) => ({completed: 'Завершена', partial: 'Есть ошибки', failed: 'Ошибка', requires_confirmation: 'Требует подтверждения', queued: 'В очереди', running: 'Выполняется', dry_run: 'Проверка без изменений', cancelled: 'Отменена', interrupted: 'Прервана', confirmation_queued: 'Подтверждение в очереди', superseded: 'Заменена автоматической сверкой'}[value] ?? value)
 const mailState = (value: string) => ({pending: 'Ожидает отправки', retry: 'Повтор отправки', sending: 'Отправляется', sent: 'Отправлено', skipped: 'Пропущено: время прошло', cancelled: 'Отменено', failed: 'Ошибка отправки'}[value] ?? value)
 let timer: ReturnType<typeof setInterval>
 
@@ -66,6 +66,16 @@ async function pickFolder() {
     if (nodes[0] && settings.value) {
       settings.value.source_path = nodes[0].path; settings.value.source_id = String(nodes[0].fileid ?? '')
       if (!settings.value.source_owner) settings.value.source_owner = getCurrentUser()?.uid ?? ''
+    }
+  } catch (e) { if (!(e instanceof FilePickerClosed)) throw e }
+}
+async function pickArchive() {
+  try {
+    const picker = getFilePickerBuilder('Архивная папка').setMultiSelect(false).allowDirectories()
+      .setMimeTypeFilter(['httpd/unix-directory']).setType(FilePickerType.Choose).build()
+    const nodes = await picker.pickNodes()
+    if (nodes[0] && settings.value) {
+      settings.value.archive_path = nodes[0].path; settings.value.archive_id = String(nodes[0].fileid ?? '')
     }
   } catch (e) { if (!(e instanceof FilePickerClosed)) throw e }
 }
@@ -146,6 +156,8 @@ onUnmounted(() => clearInterval(timer))
             <div class="actions"><Field v-model="settings.source_path" label="Путь к папке" /><NcButton @click="action(pickFolder)">Выбрать папку</NcButton></div>
             <p v-if="settings.source_id" class="muted">Стабильный ID папки: {{ settings.source_id }}</p>
             <NcCheckboxRadioSwitch v-model="settings.recursive">Искать XLSX во вложенных папках</NcCheckboxRadioSwitch>
+            <div class="actions"><Field v-model="settings.archive_path" label="Архивная папка (необязательно)" /><NcButton @click="action(pickArchive)">Выбрать архив</NcButton><NcButton v-if="settings.archive_path" @click="settings.archive_path='';settings.archive_id=''">Убрать исключение</NcButton></div>
+            <p class="muted">Файлы архивной папки и её вложенных папок не читаются. При переносе XLSX в архив все связанные события удаляются из календарей, будущие напоминания отменяются. Путь задаётся в файлах владельца источника. Пустое поле отключает исключение.</p>
             <Field v-model="settings.include" label="Маска файлов" /><Field v-model="settings.exclude" label="Исключать (маски через ;)" />
             <Field v-model="settings.debounce_seconds" label="Задержка после изменения, секунд" numeric />
             <label class="select-label">Контрольная полная сверка<select v-model.number="settings.reconciliation_minutes"><option v-for="n in [0,5,15,30,60,360,1440]" :key="n" :value="n">{{ n ? `${n} минут` : 'Выключена' }}</option></select></label>
@@ -154,9 +166,10 @@ onUnmounted(() => clearInterval(timer))
             <Field v-model="settings.timezone" label="Часовой пояс мероприятий (IANA)" />
             <label class="select-label">При исчезновении XLSX<select v-model="settings.missing_file_policy"><option value="future">Удалять только будущие события</option><option value="all">Удалять все связанные события</option><option value="keep">Не удалять автоматически</option></select></label>
           </NcSettingsSection>
-          <NcSettingsSection name="Защита удаления" description="Перед массовым удалением приложение покажет список изменений и запросит подтверждение.">
-            <NcCheckboxRadioSwitch v-model="settings.delete_guard">Защита от массового удаления</NcCheckboxRadioSwitch>
-            <Field v-model="settings.delete_percent" label="Порог, %" numeric /><Field v-model="settings.delete_minimum" label="Минимум событий" numeric />
+          <NcSettingsSection name="Автоматическая синхронизация" description="Сохранённые изменения Excel применяются автоматически. Подтверждение массового удаления можно включить отдельно.">
+            <NcCheckboxRadioSwitch v-model="settings.delete_guard">Запрашивать подтверждение при массовом удалении</NcCheckboxRadioSwitch>
+            <template v-if="settings.delete_guard"><Field v-model="settings.delete_percent" label="Порог, %" numeric /><Field v-model="settings.delete_minimum" label="Минимум событий" numeric /></template>
+            <p v-else class="muted">Изменения календаря, включая удаление событий, применяются автоматически. Недоступная папка или некорректный XLSX сохраняют защиту от удаления.</p>
           </NcSettingsSection>
           <h2>Отслеживаемые файлы</h2><p v-if="!files.length">Список появится после первой фактической сверки.</p>
           <div class="table-wrap"><table v-if="files.length"><thead><tr><th>Файл</th><th>Состояние</th><th>Синхронизация</th></tr></thead><tbody><tr v-for="file in files" :key="file.file_id"><td>{{ file.path }}</td><td>{{ file.last_error || file.status }}</td><td>{{ date(file.last_sync_at) }}</td></tr></tbody></table></div>

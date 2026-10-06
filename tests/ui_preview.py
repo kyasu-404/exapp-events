@@ -60,7 +60,7 @@ class Handler(BaseHTTPRequestHandler):
         elif route == "/api/status":
             result = {
                 "enabled": True,
-                "version": "0.1.2",
+                "version": "0.1.3",
                 "source_path": "/Мероприятия",
                 "counts": {
                     "files": 0,

@@ -1,6 +1,7 @@
 import time
 
 from ..db.store import dumps, now
+from .nextcloud_files import within_folder
 
 EVENTS = ["NodeCreatedEvent", "NodeWrittenEvent", "NodeDeletedEvent", "NodeRenamedEvent"]
 CALLBACK = "/events/files"
@@ -28,6 +29,7 @@ def enqueue(store, payload: dict, settings):
     nodes = [event.get(key, {}) for key in ("node", "target", "source")]
     root = "/" + settings.source_path.strip("/") if settings.source_path else ""
     known = {r["file_id"] for r in store.rows("SELECT file_id FROM source_files")}
+    archive = store.meta("archive_path", settings.archive_path) if settings.archive_path else ""
     relevant = False
     node_id = "tree"
     for node in nodes:
@@ -39,6 +41,10 @@ def enqueue(store, payload: dict, settings):
         if "/files/" in path:
             path = "/" + path.split("/files/", 1)[1]
         path = "/" + path.lstrip("/")
+        # Moves into the archive still reconcile via the source node/path. Writes confined
+        # to the archive do not queue another scan or parse the archived workbook.
+        if within_folder(path, archive):
+            continue
         if (
             node_id in known
             or node_id == settings.source_id

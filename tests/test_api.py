@@ -127,6 +127,59 @@ def test_overview_reports_current_issues_separately_from_historical_logs(client)
     assert http.get("/api/status", headers=headers()).json()["counts"]["issues"] == 0
 
 
+def test_archive_settings_resolve_ids_clear_stale_id_and_schedule_sync(client, monkeypatch):
+    from ex_app.lib.services.nextcloud_files import NextcloudFiles
+
+    from .test_adapters import node
+
+    http, app, shared = client
+    seen_ids = []
+
+    async def resolve_root(self, settings):
+        return node(7, "/Events", True)
+
+    async def resolve_archive(self, settings, root=None):
+        seen_ids.append(settings.archive_id)
+        if not settings.archive_path:
+            return None
+        return node(8 if settings.archive_path.endswith("Archive") else 9, settings.archive_path, True)
+
+    monkeypatch.setattr(NextcloudFiles, "resolve_root", resolve_root)
+    monkeypatch.setattr(NextcloudFiles, "resolve_archive", resolve_archive)
+    settings = Settings(source_owner="admin", source_path="/Events", archive_path="/Events/Archive")
+    assert (
+        http.put("/api/settings", headers=headers(), json={"settings": settings.model_dump()}).status_code
+        == 200
+    )
+    stored = http.get("/api/settings", headers=headers()).json()
+    assert stored["archive_id"] == "8" and stored["archive_path"] == "/Events/Archive"
+    assert app.state.runtime.store.one("SELECT file_id FROM event_queue")["file_id"] == "settings"
+    settings = app.state.runtime.settings()
+    settings.archive_path = "/Events/NewArchiveFolder"
+    settings.delete_guard = False
+    app.state.runtime.store.execute(
+        "INSERT INTO sync_runs(id,type,started_at,status) VALUES('pending','manual','2026-10-06','requires_confirmation')"
+    )
+    assert (
+        http.put("/api/settings", headers=headers(), json={"settings": settings.model_dump()}).status_code
+        == 200
+    )
+    assert seen_ids[-1] == "" and app.state.runtime.settings().archive_id == "9"
+    assert not app.state.runtime.settings().delete_guard
+    assert (
+        app.state.runtime.store.one("SELECT status FROM sync_runs WHERE id='pending'")["status"]
+        == "superseded"
+    )
+    settings = app.state.runtime.settings()
+    settings.archive_path = ""
+    assert (
+        http.put("/api/settings", headers=headers(), json={"settings": settings.model_dump()}).status_code
+        == 200
+    )
+    assert app.state.runtime.settings().archive_id == ""
+    assert app.state.runtime.store.meta("archive_path") == ""
+
+
 def test_wrong_secret_never_logged(client, capsys):
     http, app, shared = client
     for auth in [headers(secret="supplied-secret"), {"AUTHORIZATION-APP-API": "malformed"}, {}]:

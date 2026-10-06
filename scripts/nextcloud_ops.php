@@ -47,12 +47,16 @@ try {
     $route = $mode === 'settings' ? '/api/settings' : '/api/status';
     $method = 'GET';
     $params = [];
-    if ($mode === 'configure-smtp') {
+    if (in_array($mode, ['configure-smtp', 'configure-auto'], true)) {
         $current = $api->exAppRequest('exapp_events', '/api/settings', $user, 'GET');
         $settings = json_decode((string)$current->getBody(), true);
         unset($settings['smtp_password_set']);
-        $settings['smtp_mode'] = 'nextcloud';
-        $settings['smtp_enabled'] = true;
+        if ($mode === 'configure-smtp') {
+            $settings['smtp_mode'] = 'nextcloud';
+            $settings['smtp_enabled'] = true;
+        } else {
+            $settings['delete_guard'] = false;
+        }
         $route = '/api/settings';
         $method = 'PUT';
         $params = ['settings' => $settings];

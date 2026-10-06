@@ -33,11 +33,17 @@ class FakeFiles:
         self.files = {"42": SourceFile("42", "/2027/Сентябрь/Сетка.xlsx", "e1")}
         self.content = {"42": content or workbook([ROW])}
         self.fail = False
+        self.archive_path = ""
+        self.archive = {}
 
     async def scan(self, settings):
         if self.fail:
             raise ValueError("Папка недоступна")
+        self.archive_path = settings.archive_path
         return "/", list(copy.deepcopy(self.files).values())
+
+    async def archived_files(self, file_ids):
+        return {key: path for key, path in self.archive.items() if key in file_ids}
 
     async def read(self, file):
         if isinstance(self.content[file.file_id], Exception):

@@ -86,8 +86,15 @@ class SyncEngine:
 
         await asyncio.gather(*(parse_file(file) for file in sources))
         present = {s.file_id for s in sources}
+        archive_candidates = {e.file_id for e in old.values()} | {
+            r["file_id"] for r in self.store.rows("SELECT file_id FROM source_files")
+        }
+        archive_candidates -= present
+        archived = await files.archived_files(archive_candidates) if settings.archive_path else {}
         at = datetime.now(UTC)
         for key, event in old.items():
+            if event.file_id in archived:
+                continue
             if key in desired:
                 continue
             if key not in active:
@@ -124,6 +131,17 @@ class SyncEngine:
                         "subsystem": "Calendar",
                     }
                 )
+        if settings.archive_path:
+            # Internal CalDAV metadata also identifies archived files after SQLite state loss.
+            extra_candidates = {
+                row["file_id"]
+                for current in remote_maps.values()
+                for row in current.values()
+                if row.get("file_id") and row["file_id"] not in present
+            }
+            extra_candidates -= archive_candidates
+            archive_candidates |= extra_candidates
+            archived.update(await files.archived_files(extra_candidates))
         for target, current in remote_maps.items():
             url = settings.internal_calendar if target == "internal" else settings.public_calendar
             wanted = {
@@ -176,7 +194,7 @@ class SyncEngine:
                     )
                     continue
                 start = datetime.fromisoformat(existing["start"])
-                if key not in desired:
+                if key not in desired and file_id not in archived:
                     if file_id in present and start <= at:
                         continue
                     if file_id not in present and (
@@ -268,6 +286,9 @@ class SyncEngine:
             "operations": operations,
             "requires_confirmation": bool(guarded),
             "root_path": root_path,
+            "archive_path": files.archive_path if settings.archive_path else "",
+            "archived_files": archived,
+            "archive_candidates": sorted(archive_candidates) if settings.archive_path else [],
         }
         # DTSTAMP is volatile; fingerprints bind approval to semantic content, ETags, settings and files.
         fingerprint_ops = [{**o, "ical": canonical_ical(o["ical"]) if o["ical"] else ""} for o in operations]
@@ -277,6 +298,8 @@ class SyncEngine:
                 sorted(parsed_files, key=lambda f: f["file_id"]),
                 sorted(fingerprint_ops, key=lambda o: (o["target"], o["uid"])),
                 sorted((k, e.hash(), e.revision) for k, e in desired.items()),
+                summary["archive_path"],
+                archived,
             ]
         )
         return summary, desired, old, deleted, parsed_files, unavailable, moved, remote_maps
@@ -327,9 +350,22 @@ class SyncEngine:
                         raise ValueError(
                             "Источник изменился во время сверки; операции отложены до повторной проверки"
                         )
+                    if settings.archive_path and (
+                        files.archive_path != result["archive_path"]
+                        or await files.archived_files(set(result["archive_candidates"]))
+                        != result["archived_files"]
+                    ):
+                        raise ValueError(
+                            "Архив изменился во время сверки; операции отложены до повторной проверки"
+                        )
                     async with self.reminders.lock:
                         with self.store.transaction():
                             self.store.execute("UPDATE source_files SET status='missing'")
+                            for file_id, path in result["archived_files"].items():
+                                self.store.execute(
+                                    "UPDATE source_files SET path=?,status='archived',last_error='',last_sync_at=? WHERE file_id=?",
+                                    (path, now(), file_id),
+                                )
                             for file in parsed_files:
                                 self.store.execute(
                                     """INSERT INTO source_files VALUES(?,?,?,?,?,?,?,?,?)
@@ -470,6 +506,7 @@ class SyncEngine:
                     if status == "completed":
                         self.store.set_meta("last_successful_sync", now())
                     self.store.set_meta("source_path", result["root_path"])
+                    self.store.set_meta("archive_path", result["archive_path"])
                     self.store.record_sync_issues(result["issues"])
                 self.store.execute(
                     "UPDATE sync_runs SET status=?,finished_at=?,files_scanned=?,events_created=?,events_updated=?,events_deleted=?,warnings=?,errors=?,result=? WHERE id=?",

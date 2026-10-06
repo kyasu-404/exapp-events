@@ -25,6 +25,8 @@ class Settings(BaseModel):
     source_owner: str = ""
     source_id: str = ""
     source_path: str = ""
+    archive_path: str = ""
+    archive_id: str = ""
     recursive: bool = True
     include: str = "*.xlsx"
     exclude: str = "~$*"
@@ -56,6 +58,14 @@ class Settings(BaseModel):
     delete_guard: bool = True
     delete_percent: int = Field(25, ge=1, le=100)
     delete_minimum: int = Field(20, ge=1, le=10000)
+
+    @field_validator("archive_path")
+    @classmethod
+    def valid_archive_path(cls, value):
+        value = value.strip().replace("\\", "/")
+        if re.search(r"[\x00-\x1f\x7f]", value) or any(p in {".", ".."} for p in value.split("/")):
+            raise ValueError("Укажите путь к архивной папке в файлах владельца источника")
+        return value
 
     @field_validator("timezone")
     @classmethod

@@ -1,5 +1,6 @@
 export interface Settings {
   source_owner: string; source_id: string; source_path: string; recursive: boolean; include: string; exclude: string;
+  archive_path: string; archive_id: string;
   debounce_seconds: number; reconciliation_minutes: number; reconcile_on_start: boolean; check_month: boolean;
   headers: Record<string, string>; duration_minutes: number; timezone: string; missing_file_policy: string;
   calendar_owner: string; internal_calendar: string; public_enabled: boolean; public_calendar: string; public_link: string;
