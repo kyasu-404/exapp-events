@@ -103,6 +103,30 @@ def test_admin_and_normal_user(client):
     assert http.get("/heartbeat").json() == {"status": "ok"}
 
 
+def test_overview_reports_current_issues_separately_from_historical_logs(client):
+    http, app, shared = client
+    store = app.state.runtime.store
+    store.log("Warning", "Excel", "Старая проблема")
+    store.record_sync_issues(
+        [
+            {
+                "level": "Warning",
+                "subsystem": "Excel",
+                "file": "plan.xlsx",
+                "sheet": "06.10",
+                "row": 2,
+                "message": "Не заполнены поля: Ответственный",
+            }
+        ]
+    )
+    result = http.get("/api/status", headers=headers()).json()
+    assert result["counts"]["issues"] == 1
+    assert result["counts"]["logs"] == [{"level": "Warning", "n": 2}]
+    assert result["issues"][0]["row"] == 2
+    store.record_sync_issues([])
+    assert http.get("/api/status", headers=headers()).json()["counts"]["issues"] == 0
+
+
 def test_wrong_secret_never_logged(client, capsys):
     http, app, shared = client
     for auth in [headers(secret="supplied-secret"), {"AUTHORIZATION-APP-API": "malformed"}, {}]:

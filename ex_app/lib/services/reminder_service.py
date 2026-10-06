@@ -24,8 +24,7 @@ class ReminderService:
         for recipient in event.emails:
             for offset in event.offsets:
                 scheduled = event.starts_at.astimezone(UTC) - timedelta(seconds=offset)
-                if event.starts_at <= at or scheduled < at - timedelta(minutes=settings.overdue_minutes):
-                    continue
+                missed = event.starts_at <= at or scheduled < at - timedelta(minutes=settings.overdue_minutes)
                 key = digest(
                     [uid(event, "internal"), recipient.casefold(), offset, event.revision, "reminder"]
                 )
@@ -38,6 +37,8 @@ class ReminderService:
                         "event_revision": event.revision,
                         "dedupe_key": key,
                         "kind": "reminder",
+                        "status": "skipped" if missed else "pending",
+                        "last_error": "Время напоминания прошло до постановки в очередь" if missed else None,
                         "payload": {"kind": "reminder", "event": event.data()},
                     }
                 )
@@ -46,18 +47,20 @@ class ReminderService:
     def queue_job(self, job):
         self.store.execute(
             """INSERT OR IGNORE INTO reminders(event_uid,recipient,offset_seconds,scheduled_at,status,
-            event_revision,dedupe_key,kind,payload,created_at,updated_at) VALUES(?,?,?,?,'pending',?,?,?,?,?,?)""",
+            event_revision,dedupe_key,kind,payload,created_at,updated_at,last_error) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 job["event_uid"],
                 job["recipient"],
                 job["offset_seconds"],
                 job["scheduled_at"],
+                job.get("status", "pending"),
                 job["event_revision"],
                 job["dedupe_key"],
                 job["kind"],
                 dumps(job["payload"]),
                 now(),
                 now(),
+                job.get("last_error"),
             ),
         )
 

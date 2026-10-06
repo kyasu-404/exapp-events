@@ -98,6 +98,23 @@ class Store:
             (now(), level, subsystem, file, sheet, operation, result),
         )
 
+    def record_sync_issues(self, issues):
+        """Log an issue when it appears, rather than on every unchanged reconciliation."""
+        previous = {dumps(issue) for issue in json.loads(self.meta("sync_issues", "[]"))}
+        current = {dumps(issue): issue for issue in issues}
+        with self.transaction():
+            for key, issue in current.items():
+                if key not in previous:
+                    self.log(
+                        issue["level"],
+                        issue.get("subsystem", "Sync"),
+                        issue["message"],
+                        issue.get("file", ""),
+                        issue.get("sheet", ""),
+                        f"Строка {issue['row']}" if issue.get("row") else "",
+                    )
+            self.set_meta("sync_issues", dumps(list(current.values())))
+
     def recover(self):
         # SMTP acceptance and a SQLite commit cannot form a transaction. Do not blindly resend ambiguous jobs.
         self.execute(

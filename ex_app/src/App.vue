@@ -24,6 +24,10 @@ const preview = ref<Preview>(), details = ref<Run>(), diagnostics = ref<{ name: 
 const password = ref(''), clearPassword = ref(false), testRecipient = ref(''), newCalendarName = ref('Мероприятия')
 const embedView = ref('listMonth'), embedDate = ref(''), logLevel = ref(''), logSubsystem = ref(''), logFile = ref(''), logSince = ref(''), logUntil = ref(''), logOffset = ref(0), clearDialog = ref(false)
 const activeRun = computed(() => status.value?.runs.find(r => ['queued', 'running'].includes(r.status)))
+const pendingConfirmation = computed(() => {
+  const latest = status.value?.runs.find(r => !['dry_run','queued','running'].includes(r.status))
+  return latest?.status === 'requires_confirmation' ? latest : undefined
+})
 const readyCalendars = computed(() => calendars.value.filter(c => c.writable))
 const internal = computed({get: () => calendars.value.find(c => c.url === settings.value?.internal_calendar), set: c => { if (settings.value) settings.value.internal_calendar = c?.url ?? '' }})
 const publicCalendar = computed({get: () => calendars.value.find(c => c.url === settings.value?.public_calendar), set: c => { if (settings.value) settings.value.public_calendar = c?.url ?? '' }})
@@ -31,6 +35,7 @@ const iframe = computed(() => { try { return embed(settings.value?.public_link ?
 const emailCount = (states: string[]) => status.value?.counts.email.filter(r => states.includes(r.status)).reduce((sum, r) => sum + r.n, 0) ?? 0
 const date = (value?: string) => value ? new Date(value).toLocaleString('ru-RU', { timeZone: settings.value?.timezone ?? 'Europe/Moscow' }) : '—'
 const stateName = (value: string) => ({completed: 'Завершена', partial: 'Есть ошибки', failed: 'Ошибка', requires_confirmation: 'Требует подтверждения', queued: 'В очереди', running: 'Выполняется', dry_run: 'Проверка без изменений', cancelled: 'Отменена', interrupted: 'Прервана', confirmation_queued: 'Подтверждение в очереди'}[value] ?? value)
+const mailState = (value: string) => ({pending: 'Ожидает отправки', retry: 'Повтор отправки', sending: 'Отправляется', sent: 'Отправлено', skipped: 'Пропущено: время прошло', cancelled: 'Отменено', failed: 'Ошибка отправки'}[value] ?? value)
 let timer: ReturnType<typeof setInterval>
 
 async function action(fn: () => Promise<unknown>) {
@@ -115,9 +120,13 @@ onUnmounted(() => clearInterval(timer))
             <article><span>Excel-файлы</span><strong>{{ status.counts.files }}</strong><small>Отслеживается</small></article>
             <article><span>Мероприятия</span><strong>{{ status.counts.events }}</strong><small>В источнике</small></article>
             <article><span>На сайте</span><strong>{{ status.counts.public }}</strong><small>Публичный календарь</small></article>
-            <article><span>Письма в очереди</span><strong>{{ emailCount(['pending','retry','sending']) }}</strong><small>Ошибок: {{ emailCount(['failed']) }}</small></article>
-            <article><span>Журнал</span><strong>{{ status.counts.logs.filter(l => ['Warning','Error'].includes(l.level)).reduce((n,l) => n+l.n,0) }}</strong><small>Предупреждения и ошибки</small></article>
+            <article><span>Письма в очереди</span><strong>{{ emailCount(['pending','retry','sending']) }}</strong><small>Отправлено: {{ emailCount(['sent']) }} · Пропущено: {{ emailCount(['skipped']) }} · Ошибок: {{ emailCount(['failed']) }}</small></article>
+            <article><span>Текущие предупреждения и ошибки</span><strong>{{ status.counts.issues ?? 0 }}</strong><small>По последней сверке источника</small></article>
           </div>
+          <div v-if="pendingConfirmation" class="sync-notice"><p>Изменения календарей ожидают подтверждения удаления. Напоминания из проверенных строк Excel обрабатываются независимо.</p><NcButton @click="details=pendingConfirmation">Просмотреть изменения</NcButton></div>
+          <details v-if="status.issues?.length" class="current-issues"><summary>Показать текущие проблемы ({{ status.issues.length }})</summary><ul><li v-for="(issue,i) in status.issues" :key="i">{{ issue.file }} {{ issue.sheet }}<span v-if="issue.row">, строка {{ issue.row }}</span> — {{ issue.message }}</li></ul></details>
+          <h2 v-if="status.recent_emails?.length">Последние уведомления</h2>
+          <div v-if="status.recent_emails?.length" class="table-wrap"><table><thead><tr><th>Когда</th><th>Получатель</th><th>Состояние</th></tr></thead><tbody><tr v-for="mail in status.recent_emails" :key="mail.id"><td>{{ date(mail.scheduled_at) }}</td><td>{{ mail.recipient }}</td><td>{{ mailState(mail.status) }}<small v-if="mail.last_error">{{ mail.last_error }}</small></td></tr></tbody></table></div>
           <dl><dt>Источник</dt><dd>{{ status.source_path || 'Выберите папку в разделе «Источник данных»' }}</dd><dt>Последнее Files event</dt><dd>{{ date(status.last_files_event) }}</dd><dt>Полная сверка</dt><dd>{{ date(status.last_full_reconciliation) }}</dd><dt>Успешная синхронизация</dt><dd>{{ date(status.last_successful_sync) }}</dd></dl>
           <div class="actions">
             <NcButton variant="primary" :disabled="busy || !!activeRun" @click="action(() => run('/api/sync'))">Синхронизировать сейчас</NcButton>
@@ -187,7 +196,7 @@ onUnmounted(() => clearInterval(timer))
           <NcSettingsSection name="SMTP" description="Письма отправляются на адреса из Excel, включая получателей без аккаунта Nextcloud.">
             <NcCheckboxRadioSwitch v-model="settings.smtp_enabled">Email-уведомления</NcCheckboxRadioSwitch>
             <label class="select-label">Способ отправки<select v-model="settings.smtp_mode"><option value="nextcloud">SMTP Nextcloud</option><option value="custom">Отдельный SMTP</option></select></label>
-            <p v-if="settings.smtp_mode==='nextcloud'">Отправка через SMTP, настроенный в Nextcloud. Отправитель и пароль берутся из настроек облака; изменения применяются без перенастройки приложения.</p>
+            <p v-if="settings.smtp_mode==='nextcloud'" class="muted">Отправка через SMTP, настроенный в Nextcloud. Отправитель и пароль берутся из настроек облака; изменения применяются без перенастройки приложения.</p>
             <template v-if="settings.smtp_mode==='custom'">
             <Field v-model="settings.smtp_host" label="SMTP-сервер" /><Field v-model="settings.smtp_port" label="Порт" numeric />
             <label class="select-label">Шифрование<select v-model="settings.smtp_security"><option value="starttls">STARTTLS</option><option value="tls">SSL/TLS</option><option value="none">Без шифрования</option></select></label>
@@ -222,7 +231,9 @@ onUnmounted(() => clearInterval(timer))
 <h2>{{ stateName(details.status) }}</h2><p v-if="details.result?.message" class="error">{{ details.result.message }}</p>
         <p v-if="['queued','running'].includes(details.status)">Читаем XLSX и сравниваем с календарями…</p>
         <template v-if="details.result?.internal"><p>Внутренний: создать {{ details.result.internal.create }}, обновить {{ details.result.internal.update }}, удалить {{ details.result.internal.delete }}.</p><p>Публичный: создать {{ details.result.public?.create }}, обновить {{ details.result.public?.update }}, удалить {{ details.result.public?.delete }}. Писем в очередь: {{ details.result.email_jobs }}.</p></template>
-        <ul v-if="details.result?.issues?.length"><li v-for="(issue,i) in details.result.issues" :key="i">{{ issue.level }}: {{ issue.file }} {{ issue.sheet }} — {{ issue.message }}</li></ul>
+        <p v-if="details.status==='requires_confirmation'" class="sync-notice">Напоминания из проверенных строк обработаны. Изменения календарей будут применены после подтверждения.</p>
+        <p v-if="details.result?.email_skipped">Пропущено напоминаний с прошедшим временем: {{ details.result.email_skipped }}.</p>
+        <ul v-if="details.result?.issues?.length"><li v-for="(issue,i) in details.result.issues" :key="i">{{ issue.level }}: {{ issue.file }} {{ issue.sheet }}<span v-if="issue.row">, строка {{ issue.row }}</span> — {{ issue.message }}</li></ul>
         <div v-if="details.result?.operations?.length" class="table-wrap"><table><thead><tr><th>Календарь</th><th>Действие</th><th>Файл / лист</th><th>Причина</th></tr></thead><tbody><tr v-for="(op,i) in details.result.operations" :key="i"><td>{{ op.target }}</td><td>{{ op.action }}</td><td>{{ op.file_id }} / {{ op.sheet }}</td><td>{{ op.reason }}<small>{{ op.source_key }}</small></td></tr></tbody></table></div>
         <div v-if="details.status==='requires_confirmation'" class="actions"><NcButton variant="error" :disabled="busy" @click="action(()=>run(`/api/runs/${details?.id}/confirm`))">Подтвердить удаление</NcButton><NcButton :disabled="busy" @click="action(async()=>{await api(`/api/runs/${details?.id}/cancel`,'POST');await refresh()})">Отменить</NcButton></div>
       </div>
@@ -232,6 +243,20 @@ onUnmounted(() => clearInterval(timer))
   </NcContent>
 </template>
 
-<style>
+<style scoped>
 .events-page{padding:32px clamp(16px,4vw,48px);max-width:1300px;margin:auto}.page-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px}.eyebrow{color:var(--color-text-maxcontrast);font-size:14px;margin:0 0 8px}h1{font-size:28px;font-weight:600}h2{font-size:20px;font-weight:600;margin:28px 0 16px}.intro{max-width:740px;margin-bottom:24px;color:var(--color-text-maxcontrast);line-height:1.7}.cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}.cards article{padding:20px;border:1px solid var(--color-border);border-radius:var(--border-radius-large,12px);background:var(--color-background-hover)}.cards span,.cards small{display:block;color:var(--color-text-maxcontrast)}.cards strong{display:block;font-size:30px;margin:12px 0;line-height:1.2}dl{display:grid;grid-template-columns:220px 1fr;gap:12px;margin:24px 0}dt{color:var(--color-text-maxcontrast)}dd{overflow-wrap:anywhere}.actions{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:16px 0}.actions .input-field{flex:1;min-width:200px}.input-field,.v-select{max-width:640px;margin:12px 0}.select-label{display:flex;flex-direction:column;gap:8px;margin:16px 0;max-width:640px}select{padding:10px;border:1px solid var(--color-border);border-radius:8px;background:var(--color-main-background);color:var(--color-main-text);width:100%}.muted{color:var(--color-text-maxcontrast);max-width:700px;line-height:1.6;margin:12px 0}.error{color:var(--color-error);padding:12px 0;overflow-wrap:anywhere}.table-wrap{overflow-x:auto}table{width:100%;border-collapse:collapse;text-align:left}th,td{padding:12px 10px;border-bottom:1px solid var(--color-border);vertical-align:top}th{color:var(--color-text-maxcontrast);font-weight:600}td small{display:block;font-size:11px;overflow-wrap:anywhere}.save-bar{position:sticky;bottom:0;padding:16px 0;background:var(--color-main-background);border-top:1px solid var(--color-border);margin-top:24px}.modal-content{padding:28px;min-width:0;max-width:960px}.modal-content ul{padding-left:20px;margin:16px 0}.modal-content li{margin:8px 0;overflow-wrap:anywhere}.embed-code{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--color-background-hover);padding:16px;border-radius:8px;max-width:740px}.diagnostics{max-width:650px;padding:16px;border:1px solid var(--color-border);border-radius:12px}.diagnostics li{display:flex;justify-content:space-between;padding:8px}.filters{display:flex;gap:16px;flex-wrap:wrap}.filters>*{flex:1;min-width:160px}@media(max-width:900px){.cards{grid-template-columns:repeat(2,minmax(0,1fr))}dl{grid-template-columns:1fr;gap:4px}dd{margin-bottom:12px}}@media(max-width:480px){.cards{grid-template-columns:1fr}.events-page{padding:20px 16px}.modal-content{padding:16px}}
+</style>
+<style scoped>
+.events-page{min-width:0;width:100%;box-sizing:border-box}
+.events-page p,.modal-content p,.current-issues li{white-space:normal;overflow-wrap:anywhere;line-height:1.6}
+.events-page :deep(.settings-section),.events-page :deep(.settings-section__content){min-width:0;max-width:100%}
+.events-page :deep(.events-field){max-width:640px;margin-block:16px}
+.events-page :deep(.events-field .input-field){margin:0}
+.events-page .actions :deep(.events-field){flex:1;min-width:min(200px,100%)}
+.events-page :deep(.v-select){max-width:640px;margin-block:16px}
+.events-page select,.events-page input[type=date],.events-page input[type=datetime-local]{box-sizing:border-box;height:auto;min-height:44px;line-height:1.5}
+.events-page .select-label{min-width:0;white-space:normal;line-height:1.5}
+.events-page td,.modal-content td{white-space:normal;overflow-wrap:anywhere}
+.events-page .sync-notice,.modal-content .sync-notice{padding:16px;margin-block:20px;background:var(--color-background-hover);border:1px solid var(--color-border);border-radius:8px}
+.current-issues{margin-block:20px}.current-issues summary{cursor:pointer}.current-issues ul{padding-inline-start:20px}
 </style>

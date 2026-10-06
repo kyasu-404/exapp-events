@@ -226,7 +226,13 @@ class SyncEngine:
                     for recipient in self.reminders.sent_recipients(uid(event, "internal")):
                         email_jobs.append(self.reminders.notice(event, "cancel", recipient))
         email_count = sum(
-            not self.store.one("SELECT id FROM reminders WHERE dedupe_key=?", (j["dedupe_key"],))
+            j.get("status", "pending") == "pending"
+            and not self.store.one("SELECT id FROM reminders WHERE dedupe_key=?", (j["dedupe_key"],))
+            for j in email_jobs
+        )
+        email_skipped = sum(
+            j.get("status") == "skipped"
+            and not self.store.one("SELECT id FROM reminders WHERE dedupe_key=?", (j["dedupe_key"],))
             for j in email_jobs
         )
         deletions = [o for o in operations if o["action"] == "delete"]
@@ -256,6 +262,7 @@ class SyncEngine:
                 for a in ("create", "update", "delete")
             },
             "email_jobs": email_count,
+            "email_skipped": email_skipped,
             "files_scanned": len(sources),
             "issues": issues,
             "operations": operations,
@@ -310,7 +317,7 @@ class SyncEngine:
                     )
                 if not dry_run and result["requires_confirmation"] and not confirmation:
                     status = "requires_confirmation"
-                elif not dry_run:
+                if not dry_run:
                     # The tree can change while other XLSX files / CalDAV are being read.
                     # Refuse a stale plan before committing jobs or deleting generated events.
                     root_path, latest_files = await files.scan(settings)
@@ -396,6 +403,10 @@ class SyncEngine:
                                     "UPDATE source_events SET active=0 WHERE source_key=?", (key,)
                                 )
                     for operation in result["operations"]:
+                        # Approval protects Calendar mutations. Validated Excel and the mail queue
+                        # are independent, so scheduled notifications continue while approval waits.
+                        if status == "requires_confirmation":
+                            continue
                         try:
                             await calendars.apply(operation)
                             self.store.execute(
@@ -449,22 +460,17 @@ class SyncEngine:
                                     "message": "CalDAV: операция не выполнена; будет повторена",
                                 }
                             )
-                    if unavailable:
+                    if unavailable and status != "requires_confirmation":
                         status = "partial"
-                    if any(i["level"] == "Error" for i in result["issues"]):
+                    if status != "requires_confirmation" and any(
+                        i["level"] == "Error" for i in result["issues"]
+                    ):
                         status = "partial"
                     self.store.set_meta("last_full_reconciliation", now())
                     if status == "completed":
                         self.store.set_meta("last_successful_sync", now())
                     self.store.set_meta("source_path", result["root_path"])
-                    for issue in result["issues"]:
-                        self.store.log(
-                            issue["level"],
-                            issue.get("subsystem", "Sync"),
-                            issue["message"],
-                            issue.get("file", ""),
-                            issue.get("sheet", ""),
-                        )
+                    self.store.record_sync_issues(result["issues"])
                 self.store.execute(
                     "UPDATE sync_runs SET status=?,finished_at=?,files_scanned=?,events_created=?,events_updated=?,events_deleted=?,warnings=?,errors=?,result=? WHERE id=?",
                     (

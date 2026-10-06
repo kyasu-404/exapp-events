@@ -11,11 +11,13 @@ export interface Issue { level: string; message: string; file?: string; sheet?: 
 export interface Operation { target: string; action: string; source_key: string; file_id: string; sheet: string; reason: string }
 export interface Run {
   id: string; status: string; started_at: string; files_scanned: number;
-  result: null | { message?: string; internal?: Record<string, number>; public?: Record<string, number>; email_jobs?: number; issues?: Issue[]; operations?: Operation[] }
+  result: null | { message?: string; internal?: Record<string, number>; public?: Record<string, number>; email_jobs?: number; email_skipped?: number; issues?: Issue[]; operations?: Operation[] }
 }
 export interface Status {
   enabled: boolean; version: string; source_path: string; last_files_event: string; last_full_reconciliation: string; last_successful_sync: string;
-  counts: { files: number; events: number; public: number; email: {status: string; n: number}[]; logs: {level: string; n: number}[] }; runs: Run[];
+  counts: { files: number; events: number; public: number; email: {status: string; n: number}[]; logs: {level: string; n: number}[]; issues: number }; runs: Run[];
+  issues: Issue[];
+  recent_emails: { id: number; recipient: string; scheduled_at: string; status: string; last_error?: string; sent_at?: string; kind: string }[];
 }
 export interface CalendarOption { name: string; url: string; writable: boolean }
 export interface SourceFile { file_id: string; path: string; status: string; last_sync_at: string; last_error: string }

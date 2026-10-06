@@ -26,12 +26,12 @@ def enqueue(store, payload: dict, settings):
         return False
     # Save only node metadata; do not persist webhook ephemeral tokens or authentication payloads.
     nodes = [event.get(key, {}) for key in ("node", "target", "source")]
-    root = settings.source_path.rstrip("/")
+    root = "/" + settings.source_path.strip("/") if settings.source_path else ""
     known = {r["file_id"] for r in store.rows("SELECT file_id FROM source_files")}
     relevant = False
     node_id = "tree"
     for node in nodes:
-        if not isinstance(node, dict):
+        if not isinstance(node, dict) or not node:
             continue
         node_id = str(node.get("id", node.get("fileid", "tree")))
         path = str(node.get("path", ""))
@@ -42,7 +42,7 @@ def enqueue(store, payload: dict, settings):
         if (
             node_id in known
             or node_id == settings.source_id
-            or (root and (path == root or path.startswith(root + "/")))
+            or (root and (root == "/" or path == root or path.startswith(root + "/")))
         ):
             relevant = True
     # Unknown metadata must not discard directory moves/shared-tree notifications. Reconcile safely by ID.

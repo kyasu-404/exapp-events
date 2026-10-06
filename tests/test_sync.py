@@ -105,7 +105,8 @@ async def test_delete_future_and_keep_history(harness):
     await run()
     assert len(calendars.events["internal"]) == 1
     assert "Прошедшее" in next(iter(calendars.contents.values()))
-    assert all(r["status"] == "cancelled" for r in store.rows("SELECT * FROM reminders"))
+    assert len(store.rows("SELECT id FROM reminders WHERE status='cancelled'")) == 2
+    assert len(store.rows("SELECT id FROM reminders WHERE status='skipped'")) == 2
 
 
 async def test_full_reconciliation_restores_calendar(harness):

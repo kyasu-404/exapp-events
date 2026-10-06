@@ -1,5 +1,6 @@
 import asyncio
 import csv
+import json
 import os
 from contextlib import asynccontextmanager
 from io import StringIO
@@ -165,14 +166,19 @@ def create_app(directory: Path | None = None, factory=AsyncNextcloudApp, restore
         }
         counts["email"] = runtime.store.rows("SELECT status,COUNT(*) n FROM reminders GROUP BY status")
         counts["logs"] = runtime.store.rows("SELECT level,COUNT(*) n FROM logs GROUP BY level")
+        counts["issues"] = len(json.loads(runtime.store.meta("sync_issues", "[]")))
         return {
             "enabled": runtime.enabled,
-            "version": "0.1.1",
+            "version": "0.1.2",
             "counts": counts,
             "source_path": runtime.store.meta("source_path", runtime.settings().source_path),
             "last_files_event": runtime.store.meta("last_files_event"),
             "last_full_reconciliation": runtime.store.meta("last_full_reconciliation"),
             "last_successful_sync": runtime.store.meta("last_successful_sync"),
+            "issues": json.loads(runtime.store.meta("sync_issues", "[]")),
+            "recent_emails": runtime.store.rows(
+                "SELECT id,recipient,scheduled_at,status,last_error,sent_at,kind FROM reminders ORDER BY id DESC LIMIT 20"
+            ),
             "runs": [
                 runtime.run(r["id"])
                 for r in runtime.store.rows("SELECT id FROM sync_runs ORDER BY started_at DESC LIMIT 10")

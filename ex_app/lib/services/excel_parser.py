@@ -238,9 +238,16 @@ def parse_xlsx(content: bytes, file_id: str, path: str, settings: Settings) -> P
                     if row_no not in formula_rows[sheet.title]:
                         continue
                 if not all(values.get(k) is not None and str(values[k]).strip() for k in REQUIRED):
+                    missing = [
+                        settings.headers[k]
+                        for k in REQUIRED
+                        if values.get(k) is None or not str(values[k]).strip()
+                    ]
                     result.issue(
                         "Warning",
-                        "Обязательное значение отсутствует (возможна формула без cached value)",
+                        "Не заполнены поля: "
+                        + ", ".join(missing)
+                        + ". Строка пропущена; прежние события файла сохранены.",
                         sheet.title,
                         row_no,
                         protect=True,
